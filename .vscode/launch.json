@@ -1,0 +1,102 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Test tags with sequence number 6559513",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["6559513", "/tmp/etag2.txt"],
+            "env": {
+                "NODES": "1",
+                "WAYS": "0",
+                "RELATIONS": "0",
+                "MEMBERS": "0",
+                "TAGS": "0",
+                "VERBOSE": "0"
+            }
+        },
+        {
+            "name": "Test ways with sequence number 6559513",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["6559513", "/tmp/etag2.txt"],
+            "env": {
+                "NODES": "0",
+                "WAYS": "1",
+                "RELATIONS": "0",
+                "MEMBERS": "0",
+                "TAGS": "0",
+                "VERBOSE": "0"
+            }
+        },
+        {
+            "name": "Test relations with sequence number 6559513",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["6559513", "/tmp/etag2.txt"],
+            "env": {
+                "NODES": "0",
+                "WAYS": "0",
+                "RELATIONS": "1",
+                "MEMBERS": "0",
+                "TAGS": "0",
+                "VERBOSE": "0"
+            }
+        },
+        {
+            "name": "Test members with sequence number 6559513",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["6559513", "/tmp/etag2.txt"],
+            "env": {
+                "NODES": "0",
+                "WAYS": "0",
+                "RELATIONS": "0",
+                "MEMBERS": "1",
+                "TAGS": "0",
+                "VERBOSE": "0"
+            }
+        },
+        {
+            "name": "Test tags with sequence number 6559513",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["6559513", "/tmp/etag2.txt"],
+            "env": {
+                "NODES": "0",
+                "WAYS": "0",
+                "RELATIONS": "0",
+                "MEMBERS": "0",
+                "TAGS": "1",
+                "VERBOSE": "0"
+            }
+        },
+        {
+            "name": "Test tags with sequence number 6559513",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["6559513", "/tmp/etag2.txt"],
+            "env": {
+                "NODES": "0",
+                "WAYS": "0",
+                "RELATIONS": "0",
+                "MEMBERS": "0",
+                "TAGS": "1",
+                "VERBOSE": "0"
+            }
+        }
+
+    ]
+}
