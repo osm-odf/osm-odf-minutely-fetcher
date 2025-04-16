@@ -11,12 +11,12 @@ import osmdiff
 # epoch in seconds
 current_epoch = int(time.time())
 
-VERBOSE = os.getenv("VERBOSE", "0") == "1"
-NODES = os.getenv("NODES", "0") == "1"
-WAYS = os.getenv("WAYS", "0") == "1"
-RELATIONS = os.getenv("RELATIONS", "0") == "1"
-MEMBERS = os.getenv("MEMBERS", "0") == "1"
-TAGS = os.getenv("TAGS", "0") == "1"
+VERBOSE = os.getenv("VERBOSE", 0)
+NODES = os.getenv("NODES", 0)
+WAYS = os.getenv("WAYS", 0)
+RELATIONS = os.getenv("RELATIONS", 0)
+MEMBERS = os.getenv("MEMBERS", 0)
+TAGS = os.getenv("TAGS", 0)
 
 
 max_changeset_id = 0
