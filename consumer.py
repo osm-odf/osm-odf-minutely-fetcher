@@ -24,8 +24,9 @@ WAYS = os.getenv("WAYS", "0") == "1"
 RELATIONS = os.getenv("RELATIONS", "0") == "1"
 MEMBERS = os.getenv("MEMBERS", "0") == "1"
 TAGS = os.getenv("TAGS", "0") == "1"
-SEQNO = os.getenv("ODF_ETAG", 0)
 
+
+max_changeset_id = 0
 
 def fetch_xml(url):
     """Fetch XML data from a URL and return its content as bytes."""
@@ -38,175 +39,103 @@ def fetch_xml(url):
     return response.content
 
 
-def parse_osm_create(xml_data):
-    """
-    Parse only the create actions from the OSM XML diff.
-    Separates node, way, relation records and extracts tag rows.
-    For ways, builds a WKT geometry from <nd> children.
-    Returns four lists: nodes_rows, ways_rows, relations_rows, tags_rows.
-    """
-    tree = ET.parse(io.BytesIO(xml_data))
-    root = tree.getroot()
 
-    nodes_rows = []
-    ways_rows = []
-    relations_rows = []
-    members_rows = []
-    tags_rows = []
-
-    # Process each <action> element
-    for action in root.findall("action"):
-        act_type = action.attrib.get("type")
-        if act_type != "create":
-            continue  # Only process create actions
-
-        # Find the created element (usually under <new>)
-        elem = action.find("new/*")
-        if elem is None:
-            elem = action.find("*")
-        if elem is None:
-            continue
-
-        # Convert timestamp to epoch milliseconds
-        timestamp = elem.attrib.get("timestamp")
-        epochMillis = None
-        if timestamp:
-            try:
-                epochMillis = int(
-                    datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ").timestamp()
-                    * 1000
-                )
-            except Exception:
-                epochMillis = None
-
-        elem_type = elem.tag
-        elem_id = elem.attrib.get("id")
-
-        global max_changeset_id
-        max_changeset_id = max(max_changeset_id, int(elem.attrib.get("changeset")))
-
-        # Extract tags for this element (if any)
-        for tag in elem.findall("tag"):
-            key = tag.attrib.get("k")
-            value = tag.attrib.get("v")
-            tags_rows.append(
-                {
-                    "epochMillis": epochMillis,
-                    "type": elem_type,
-                    "id": elem_id,
-                    "key": key,
-                    "value": value,
-                }
-            )
-
-        if elem_type == "node":
-            row = {
-                "epochMillis": epochMillis,
-                "id": elem_id,
-                "version": elem.attrib.get("version"),
-                "changeset": elem.attrib.get("changeset"),
-                "username": elem.attrib.get("user"),
-                "uid": elem.attrib.get("uid"),
-                "lat": elem.attrib.get("lat"),
-                "lon": elem.attrib.get("lon"),
-            }
-            nodes_rows.append(row)
-        elif elem_type == "way":
-            # Build WKT geometry from <nd> children. We expect each <nd> to include lat/lon.
-            coords = []
-            for nd in elem.findall("nd"):
-                # Some OSM diff files might include lat/lon attributes on the nd element;
-                # if not, you might need to look up the referenced node.
-                lat = nd.attrib.get("lat")
-                lon = nd.attrib.get("lon")
-                if lat is not None and lon is not None:
-                    try:
-                        coords.append(
-                            (float(lon), float(lat))
-                        )  # WKT expects x (lon) then y (lat)
-                    except ValueError:
-                        continue
-            if coords:
-                # If the way is closed (>=4 points and first equals last), output as POLYGON.
-                if len(coords) >= 4 and coords[0] == coords[-1]:
-                    coord_str = ", ".join(f"{pt[0]} {pt[1]}" for pt in coords)
-                    wkt_geom = f"POLYGON(({coord_str}))"
-                else:
-                    coord_str = ", ".join(f"{pt[0]} {pt[1]}" for pt in coords)
-                    wkt_geom = f"LINESTRING({coord_str})"
-            else:
-                wkt_geom = ""
-            row = {
-                "epochMillis": epochMillis,
-                "id": elem_id,
-                "version": elem.attrib.get("version"),
-                "changeset": elem.attrib.get("changeset"),
-                "username": elem.attrib.get("user"),
-                "uid": elem.attrib.get("uid"),
-                "geometry": wkt_geom,
-            }
-            ways_rows.append(row)
-        elif elem_type == "relation":
-            # first we append the relation metadata to the relations
-            row = {}
-            row = {
-                "epochMillis": epochMillis,
-                "id": elem_id,
-                "version": elem.attrib.get("version"),
-                "changeset": elem.attrib.get("changeset"),
-                "username": elem.attrib.get("user"),
-                "uid": elem.attrib.get("uid"),
-            }
-            relations_rows.append(row)
-
-            # now collect all the members
-            members = elem.findall("member")
-            for elem in members:
-                row = {
-                    "relationId": elem_id,
-                    "memberId": elem.attrib.get("ref"),
-                    "memberRole": elem.attrib.get("role"),
-                    "memberType": elem.attrib.get("type"),
-                }
-
-    return nodes_rows, ways_rows, relations_rows, members_rows, tags_rows
-
-
-def write_csv_dict(rows, csv_file, fieldnames):
-    """Write rows (a list of dictionaries) to a CSV file and optionally print to stdout."""
-    # Write to actual file
-    with open(csv_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
-
-    # Print to stdout if verbose
-    if VERBOSE:
-        print(f"\n--- {csv_file} ---")
-        with open(csv_file, "r") as f:
-            print(f.read())
+def write_csv_stdout(rows, fieldnames):
+    """Write rows (a list of dictionaries) as CSV to stdout, filtering only allowed fields."""
+    writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL)
+    writer.writeheader()
+    if rows:
+        print("DEBUG: first row keys:", list(rows[0].keys()), file=sys.stderr)
+    for row in rows:
+        # Remove all keys not in fieldnames
+        filtered_row = {k: row.get(k, "") for k in fieldnames}
+        # Remove extra keys if any exist
+        for k in list(row.keys()):
+            if k not in fieldnames:
+                del row[k]
+        writer.writerow(filtered_row)
 
 
 def main():
-    if len(sys.argv) != 1:
-        print("Usage: consumer.py")
+    global max_changeset_id
+    if len(sys.argv) != 3:
+        print("Usage: consumer.py <sequence_number> <etag_output_path>")
         sys.exit(1)
 
+    sequence_number = sys.argv[1]
+    etag_output_path = sys.argv[2]
+
     adiff = osmdiff.AugmentedDiff()
-    adiff.sequence_number = SEQNO
+    adiff.sequence_number = sequence_number
     adiff.retrieve()
 
     try:
-        # FIXME this is not complete yet
-        nodes_rows = [o.attribs for o in adiff.create if isinstance(o, osmdiff.Node)]
-        ways_rows = [o.attribs for o in adiff.create if isinstance(o, osmdiff.Way)]
-        relations_rows = [
-            o.attribs for o in adiff.create if isinstance(o, osmdiff.Relation)
-        ]
-        members_rows = [
-            o.members for o in adiff.create if isinstance(o, osmdiff.Relation)
-        ]
+        # Transform osmdiff objects to expected CSV dicts
+        def to_epoch_millis(ts):
+            if ts is None:
+                return None
+            if isinstance(ts, (int, float)):
+                # Assume already ms
+                return int(ts)
+            # Otherwise, try parsing as seconds
+            try:
+                return int(float(ts) * 1000)
+            except Exception:
+                return None
+
+        nodes_rows = []
+        ways_rows = []
+        relations_rows = []
+        members_rows = []
+        tags_rows = []
+        for o in adiff.create:
+            print(o)
+            max_changeset_id = max(max_changeset_id, getattr(o, "changeset", 0))
+            if isinstance(o, osmdiff.Node):
+                row = {
+                    "epochMillis": to_epoch_millis(getattr(o, "timestamp", None)),
+                    "id": getattr(o, "id", None),
+                    "version": getattr(o, "version", None),
+                    "changeset": getattr(o, "changeset", None),
+                    "username": getattr(o, "user", None),
+                    "uid": getattr(o, "uid", None),
+                    "lat": getattr(o, "lat", None),
+                    "lon": getattr(o, "lon", None),
+                }
+                nodes_rows.append(row)
+
+        ways_rows = []
+        for o in adiff.create:
+            max_changeset_id = max(max_changeset_id, getattr(o, "changeset", 0))
+            if isinstance(o, osmdiff.Way):
+                row = {
+                    "epochMillis": to_epoch_millis(getattr(o, "timestamp", None)),
+                    "id": getattr(o, "id", None),
+                    "version": getattr(o, "version", None),
+                    "changeset": getattr(o, "changeset", None),
+                    "username": getattr(o, "user", None),
+                    "uid": getattr(o, "uid", None),
+                    "geometry": getattr(o, "geometry", None),
+                }
+                ways_rows.append(row)
+
+        relations_rows = []
+        for o in adiff.create:
+            if isinstance(o, osmdiff.Relation):
+                row = {
+                    "epochMillis": to_epoch_millis(getattr(o, "timestamp", None)),
+                    "id": getattr(o, "id", None),
+                    "version": getattr(o, "version", None),
+                    "changeset": getattr(o, "changeset", None),
+                    "username": getattr(o, "user", None),
+                    "uid": getattr(o, "uid", None),
+                    "geometry": getattr(o, "geometry", None),
+                }
+                max_changeset_id = max(max_changeset_id, getattr(o, "changeset", 0) )
+                relations_rows.append(row)
+
+        # Members and tags may need similar filtering/flattening if used
+        members_rows = [o.members for o in adiff.create if isinstance(o, osmdiff.Relation)]
         tags_rows = [o.tags for o in adiff.create if isinstance(o, osmdiff.Relation)]
 
         # Write nodes CSV with the specified columns.
@@ -223,9 +152,8 @@ def main():
                 "lat",
                 "lon",
             ]
-            write_csv_dict(nodes_rows, nodes_csv, node_fields)
+            write_csv_stdout(nodes_rows, node_fields)
 
-        # Write ways CSV with the specified columns.
         if WAYS:
             way_fields = [
                 "epochMillis",
@@ -236,9 +164,8 @@ def main():
                 "uid",
                 "geometry",
             ]
-            write_csv_dict(ways_rows, ways_csv, way_fields)
+            write_csv_stdout(ways_rows, way_fields)
 
-        # Write relations CSV with the specified columns.
         if RELATIONS:
             relation_fields = [
                 "epochMillis",
@@ -249,16 +176,15 @@ def main():
                 "uid",
                 "geometry",
             ]
-            write_csv_dict(relations_rows, relations_csv, relation_fields)
+            write_csv_stdout(relations_rows, relation_fields)
 
         if MEMBERS:
             members_fields = ["relationId", "memberId", "memberRole", "memberType"]
-            write_csv_dict(members_rows, members_csv, members_fields)
+            write_csv_stdout(members_rows, members_fields)
 
-        # Write tags CSV with the specified columns.
         if TAGS:
             tags_fields = ["epochMillis", "type", "id", "key", "value"]
-            write_csv_dict(tags_rows, tags_csv, tags_fields)
+            write_csv_stdout(tags_rows, tags_fields)
 
         if VERBOSE:
             print("Processing complete")
@@ -277,8 +203,8 @@ def main():
         sys.exit(1)
 
     print(f"max changeset id: {max_changeset_id}")
-    with open(ETAG_PATH, "w") as fh:
-        fh.write(max_changeset_id)
+    with open(etag_output_path, "w") as fh:
+        fh.write(str(max_changeset_id))
 
 
 if __name__ == "__main__":
